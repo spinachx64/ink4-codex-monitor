@@ -75,7 +75,9 @@ void QuotaView::create(lv_obj_t* screen) {
     lv_obj_set_style_arc_rounded(mark,false,LV_PART_INDICATOR);
     lv_obj_remove_flag(mark,LV_OBJ_FLAG_CLICKABLE);
     text(brand_,"CODEX",43,8,&codex_inter_21);
-    dot_=box(screen,354,31,9,9);lv_obj_set_style_radius(dot_,LV_RADIUS_CIRCLE,0);
+    // Inter 12 uppercase ink spans y=28..35; center the dot on that ink,
+    // rather than on the font's line box (which includes descender space).
+    dot_=box(screen,354,27,9,9);lv_obj_set_style_radius(dot_,LV_RADIUS_CIRCLE,0);
     lv_obj_set_style_border_color(dot_,ink,0);lv_obj_set_style_border_width(dot_,2,0);
     lv_obj_set_style_bg_color(dot_,ink,0);
     status_=text(screen,"NO DATA",348,27,&codex_inter_12);
