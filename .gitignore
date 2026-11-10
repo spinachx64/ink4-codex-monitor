@@ -1,0 +1,14 @@
+/build-firmware/
+/.state/
+__pycache__/
+*.pyc
+.DS_Store
+
+/backups/
+
+/.venv/
+
+# Local device records and machine-specific recovery helper
+/docs/*.json
+/docs/VALIDATION.md
+/scripts/restore.sh
