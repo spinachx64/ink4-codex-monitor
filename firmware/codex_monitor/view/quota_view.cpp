@@ -147,6 +147,9 @@ void QuotaView::create(lv_obj_t* screen) {
     auto* help=alert_help_=text(alert_,"WAITING FOR QUOTA DATA.\nTAP THE FOOTER TO REFRESH.\nPRESS HOME TO RETURN.",0,333,&codex_inter_14,muted);
     lv_obj_set_width(help,420);lv_obj_set_style_text_align(help,LV_TEXT_ALIGN_CENTER,0);
     lv_obj_set_style_text_line_space(help,10,0);
+    progress_=text(alert_,"",0,439,&codex_inter_14,muted);
+    lv_obj_set_width(progress_,420);
+    lv_obj_set_style_text_align(progress_,LV_TEXT_ALIGN_CENTER,0);
 }
 void QuotaView::update(const quota::Store& store,bool connected,int64_t now,
                        int64_t lastPacketUs,bool refreshing,bool bleError) {
@@ -187,6 +190,18 @@ void QuotaView::update(const quota::Store& store,bool connected,int64_t now,
 
     set(alert_help_,bleError?"RESTART DEVICE TO RETRY.\nTHE BRIDGE HAS NOT CONNECTED.":
         "WAITING FOR QUOTA DATA.\nTAP THE FOOTER TO REFRESH.\nPRESS HOME TO RETURN.");
+    const bool waiting=!any && !bleError;
+    if(waiting && !waiting_) waiting_since_us_=now;
+    waiting_=waiting;
+    if(waiting) {
+        // Only this additional line changes, in five-second steps. Connection
+        // transitions still show immediately; the existing help stays intact.
+        const auto seconds=std::max<int64_t>(0,now-waiting_since_us_)/5000000*5;
+        snprintf(value,sizeof(value),"%s / %dS",connected?"SYNCING QUOTA":"CONNECTING BLE",
+                 static_cast<int>(std::min<int64_t>(seconds,99999)));
+        set(progress_,value);
+    }
+    show(progress_,waiting);
     show(alert_,!any);
 }
 }

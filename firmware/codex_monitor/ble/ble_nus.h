@@ -23,7 +23,8 @@ void pause();
 bool poll_line(char* out, int out_size, int64_t* received_us = nullptr);
 
 // Notify the connected central (the Mac bridge) to push a fresh reading now.
-// No-op if nothing is connected.
+// Before connection/subscription, coalesce requests and send once TX is ready.
+// Closing the page cancels the pending request.
 void request_refresh();
 bool connected();
 

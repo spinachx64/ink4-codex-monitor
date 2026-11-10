@@ -13,6 +13,8 @@ public:
 private:
     lv_obj_t *root_, *brand_, *ring_, *five_, *five_pct_, *weekly_, *weekly_pct_, *bar_,
              *reset5_, *resetw_, *status_, *dot_, *updated_, *connection_,
-             *footer_left_, *hint5_, *hintw_, *alert_, *alert_title_, *alert_help_;
+             *footer_left_, *hint5_, *hintw_, *alert_, *alert_title_, *alert_help_, *progress_;
+    int64_t waiting_since_us_ = 0;
+    bool waiting_ = false;
 };
 }

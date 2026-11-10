@@ -8,5 +8,6 @@ command -v idf.py >/dev/null || { echo 'Activate ESP-IDF v5.5.4 export.sh first.
 if [[ ! -d build-firmware ]]; then
   python3 scripts/prepare_firmware.py
 fi
+python3 scripts/update_firmware.py --output build-firmware
 cd build-firmware
 idf.py build "$@"

@@ -47,3 +47,12 @@ class State:
         stale = failed or time.time() - self.data.get("updated_at", 0) > 900
         return {key: replace(win, source="stale") if stale and win and win.source == "api" else win
                 for key, value in self.data.get("windows", {}).items() for win in [Window.restore(value)]}
+
+    def mark_failed(self):
+        """Persist only the first transition to stale, retaining the query time."""
+        windows = {key: asdict(win) if win else None for key, win in self.windows(failed=True).items()}
+        if windows == self.data.get("windows", {}):
+            return False
+        self.data["windows"] = windows
+        self.save()
+        return True

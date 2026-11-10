@@ -8,5 +8,5 @@ cc -c "$CJSON_DIR/cJSON.c" -I"$CJSON_DIR" -o .state/cJSON.o
 c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor -I"$CJSON_DIR" \
   tests/test_quota.cpp firmware/codex_monitor/model/quota_state.cpp .state/cJSON.o -o .state/test_quota
 .state/test_quota
-python3 -m py_compile scripts/prepare_firmware.py
+python3 -m py_compile scripts/prepare_firmware.py scripts/update_firmware.py
 echo 'Quota model checks passed.'

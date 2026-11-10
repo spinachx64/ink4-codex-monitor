@@ -6,11 +6,14 @@
 
 电脑上的 Python Bridge 读取已登录 Codex 账号的额度，通过蓝牙发送给设备。设备以大圆环展示 5h 剩余额度，以横条展示周剩余额度；未知或过期数据会明确标识。
 
-- 默认每 **5 分钟**查询一次最新额度。
+- 设备连接并完成通知订阅后，默认每 **5 分钟**查询一次最新额度；断开时暂停后台查询。
 - 开机进入设备主页，点击 **Codex** 图标手动启动。
 - Codex 页面中，面板按钮 **1 返回主页，2、3 手动同步**。
 - 点击左上 CODEX 可返回主页，点击左下 LAST UPDATED 可同步。
+- 每次进入 Codex 页面自动触发一次同步，相当于点击 LAST UPDATED；未连接时保留请求，蓝牙连接并完成通知订阅后立即发送。
 - 保留官方应用，主页支持分页；退出 Codex 后停止蓝牙广播和连接。
+- 额度查询完成或状态变化时发送数据，不再每分钟重发缓存。重连先显示缓存（API 缓存标记为 stale），新查询成功后恢复正常状态。
+- 固件开启蓝牙 Modem Sleep，并请求省电连接参数；Codex 页面仍保持常驻显示。
 
 ## 安装说明
 
@@ -40,6 +43,8 @@ bash scripts/run_bridge.sh
 ```
 
 默认寻找广播名为 `Codex Ink` 的设备。需要指定设备时，使用 `--device YOUR_DEVICE_UUID`；需要指定 Codex CLI 时，使用 `--codex /path/to/codex`。
+
+设备不在时，每次扫描最多 10 秒，重试等待按 3、6、10 秒增长并封顶。重新打开设备，发现等待按约 **20 秒**预留，再加系统连接和通知订阅时间；日志会显示下次重试时间。`--once` 始终直接查询，不依赖设备连接。
 
 设置登录自启动前，先停止前台后端，避免同时运行两个实例：
 
@@ -78,7 +83,19 @@ python -m pip install qoi-conv Pillow
 bash scripts/build.sh
 ```
 
-脚本只修改本项目的 `build-firmware/` 副本，保留官方源码目录。已有构建目录不会被覆盖；需要重新准备时可用 `--output` 指定新的目录，并在该目录中执行 `idf.py build`。
+`prepare_firmware.py` 创建独立副本，不覆盖已有目录，也不修改官方源码。需要重新准备时可用 `--output` 指定新目录。
+
+**升级已有构建副本：** 更新项目后直接执行 `bash scripts/build.sh`。构建前会从 `firmware/codex_monitor/` 更新生成的 `build-firmware/main/codex_monitor/` 文件，并应用受管蓝牙配置；此目录中的本地修改会被同名源文件覆盖。其他官方模块和非受管配置不变。
+
+自定义构建目录可手动同步后构建：
+
+```bash
+python3 scripts/update_firmware.py --output /path/to/build-copy
+cd /path/to/build-copy
+idf.py build
+```
+
+Bridge 更新后需要重启正在运行的进程或后台服务；设备端蓝牙省电配置需要重新构建、刷入固件才生效。Bridge 与旧固件继续使用同一 v1 协议。设计、验收标准及验证状态见 [省电改造 Spec](docs/POWER_SAVING_SPEC.md)。
 
 ### 3. 备份并刷写设备
 

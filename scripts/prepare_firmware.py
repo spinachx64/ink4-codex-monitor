@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from integrate_home import integrate_home
 from patch_display import patch_display
+from update_firmware import configure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,11 +39,7 @@ idf_component_register(SRCS ${SOURCES}''', 1)
     cmake.write_text(text)
     integrate_home(source, output)
     patch_display(source, output)
-    config = output / 'sdkconfig'
-    text = config.read_text().replace('# CONFIG_BT_ENABLED is not set', 'CONFIG_BT_ENABLED=y')
-    text = text.replace('# CONFIG_LV_FONT_MONTSERRAT_28 is not set', 'CONFIG_LV_FONT_MONTSERRAT_28=y')
-    text += '\nCONFIG_BT_NIMBLE_ENABLED=y\nCONFIG_BT_BLUEDROID_ENABLED=n\nCONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y\nCONFIG_BT_NIMBLE_ROLE_BROADCASTER=y\nCONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y\nCONFIG_BT_NIMBLE_MAX_CONNECTIONS=1\nCONFIG_BT_NIMBLE_ROLE_CENTRAL=n\nCONFIG_BT_NIMBLE_ROLE_OBSERVER=n\n'
-    config.write_text(text)
+    configure(output / 'sdkconfig')
     revision = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'],
                               capture_output=True, text=True, check=True).stdout.strip()
     (output / 'CODEX_MONITOR_BASELINE.txt').write_text(revision + '\n')

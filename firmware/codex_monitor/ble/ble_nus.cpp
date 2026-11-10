@@ -22,6 +22,7 @@
 
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+#include "nimble/nimble_npl.h"
 #include "host/ble_hs.h"
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
@@ -40,7 +41,7 @@ const ble_uuid128_t kSvcUuid = BLE_UUID128_INIT(
 const ble_uuid128_t kRxUuid = BLE_UUID128_INIT(
     0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
     0x93, 0xf3, 0xa3, 0xb5, 0x02, 0x00, 0x40, 0x6e);
-// TX 6E400003-... (notify; unused for now)
+// TX 6E400003-... (notify; manual quota refresh requests)
 const ble_uuid128_t kTxUuid = BLE_UUID128_INIT(
     0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
     0x93, 0xf3, 0xa3, 0xb5, 0x03, 0x00, 0x40, 0x6e);
@@ -61,8 +62,43 @@ uint8_t g_addr_type = 0;
 std::atomic<bool> g_active{false}, g_synced{false};
 const char* g_name = "Codex Ink";
 std::atomic<bool> g_prepared{false}, g_failed{false};
+struct ble_npl_callout g_param_update;
+std::atomic<bool> g_param_pending{false};
+std::atomic<bool> g_refresh_pending{false}, g_subscribed{false};
+int64_t g_connected_us = 0;  // Connection timing is host-task only.
+bool g_params_attempted = false;
 
 void start_advertising();
+
+void send_pending_refresh()
+{
+    const auto connection = g_conn_handle.load();
+    if (!g_active || !g_subscribed || connection == BLE_HS_CONN_HANDLE_NONE ||
+        !g_refresh_pending.exchange(false)) return;
+    struct os_mbuf* om = ble_hs_mbuf_from_flat("R", 1);
+    if (!om || ble_gatts_notify_custom(connection, g_tx_handle, om)) {
+        g_refresh_pending = true;
+        return;
+    }
+    ESP_LOGI(TAG, "Pending quota refresh sent");
+}
+
+void request_low_power_params(struct ble_npl_event*)
+{
+    const auto connection = g_conn_handle.load();
+    if (!g_active || !g_param_pending || !g_subscribed || g_params_attempted ||
+        connection == BLE_HS_CONN_HANDLE_NONE ||
+        esp_timer_get_time() - g_connected_us < 5000000) return;
+    g_params_attempted = true;  // A refusal must not cause a negotiation loop.
+    g_param_pending = false;
+    struct ble_gap_upd_params params = {};
+    params.itvl_min = 96;   // 120ms, in 1.25ms units.
+    params.itvl_max = 120;  // 150ms.
+    params.latency = 4;
+    params.supervision_timeout = 600;  // 6s, in 10ms units.
+    const int rc = ble_gap_update_params(connection, &params);
+    if (rc) ESP_LOGI(TAG, "power-saving connection request failed (%d); keeping current parameters", rc);
+}
 
 // Push a finished line to the shared slot under the mutex.
 void publish_line(const char* line, int len)
@@ -145,15 +181,21 @@ int gap_event(struct ble_gap_event* event, void*)
 {
     switch (event->type) {
         case BLE_GAP_EVENT_CONNECT:
-            if (event->connect.status == 0)
+            if (event->connect.status == 0) {
                 g_conn_handle = event->connect.conn_handle;
-            else
+                g_connected_us = esp_timer_get_time();
+                g_subscribed = false;
+                g_params_attempted = false;
+            } else
                 start_advertising();
             if (!g_active && event->connect.status == 0)
                 ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
             break;
         case BLE_GAP_EVENT_DISCONNECT:
             g_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            g_param_pending = false;
+            g_subscribed = false;
+            ble_npl_callout_stop(&g_param_update);
             g_assembling_len = 0;
             g_dropping = false;
             if (xSemaphoreTake(g_mtx, portMAX_DELAY) == pdTRUE) {
@@ -162,6 +204,40 @@ int gap_event(struct ble_gap_event* event, void*)
             }
             start_advertising();
             break;
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            if (event->subscribe.attr_handle == g_tx_handle &&
+                event->subscribe.conn_handle == g_conn_handle) {
+                g_subscribed = event->subscribe.cur_notify;
+                send_pending_refresh();
+                g_param_pending = false;
+                ble_npl_callout_stop(&g_param_update);
+                if (g_active && g_subscribed && !g_params_attempted) {
+                    // Negotiate on the host queue, after subscription and at
+                    // least 5s after connection (allow one extra tick of margin).
+                    const int64_t remain_us = 5000000 - (esp_timer_get_time() - g_connected_us);
+                    const uint32_t delay_ms = remain_us > 0 ? (remain_us + 999) / 1000 + 1 : 1;
+                    g_param_pending = true;
+                    const int rc = ble_npl_callout_reset(&g_param_update,
+                        ble_npl_time_ms_to_ticks32(delay_ms) + 1);
+                    if (rc) {
+                        g_param_pending = false;
+                        ESP_LOGI(TAG, "connection parameter timer failed (%d)", rc);
+                    }
+                }
+            }
+            break;
+        case BLE_GAP_EVENT_CONN_UPDATE: {
+            struct ble_gap_conn_desc desc = {};
+            if (!event->conn_update.status &&
+                !ble_gap_conn_find(event->conn_update.conn_handle, &desc)) {
+                ESP_LOGI(TAG, "connection interval=%u (1.25ms), latency=%u, timeout=%u (10ms)",
+                         unsigned(desc.conn_itvl), unsigned(desc.conn_latency), unsigned(desc.supervision_timeout));
+            } else {
+                ESP_LOGI(TAG, "connection parameter update refused (%d); keeping current parameters",
+                         event->conn_update.status);
+            }
+            break;
+        }
         case BLE_GAP_EVENT_ADV_COMPLETE:
             start_advertising();
             break;
@@ -178,6 +254,8 @@ void start_advertising()
     struct ble_gap_adv_params adv_params = {};
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    adv_params.itvl_min = 1600;  // 1000ms, in 0.625ms units.
+    adv_params.itvl_max = 2000;  // 1250ms.
 
     struct ble_hs_adv_fields fields = {};
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
@@ -244,6 +322,11 @@ bool prepare(const char* device_name)
         ESP_LOGE(TAG, "GATT initialization failed");
         return false;
     }
+    if (ble_npl_callout_init(&g_param_update, nimble_port_get_dflt_eventq(),
+                             request_low_power_params, nullptr)) {
+        ESP_LOGE(TAG, "connection parameter timer initialization failed");
+        return false;
+    }
     ble_hs_cfg.sync_cb = on_sync;
     g_prepared = true;
     g_failed = false;
@@ -268,6 +351,10 @@ bool failed() { return g_failed; }
 void pause()
 {
     g_active = false;  // Disconnect/advertisement callbacks must not restart advertising.
+    g_refresh_pending = false;
+    g_subscribed = false;
+    g_param_pending = false;  // Also invalidate an already queued callout event.
+    if (g_prepared) ble_npl_callout_stop(&g_param_update);
     if (!g_synced) return;
     ble_gap_adv_stop();
     const auto connection = g_conn_handle.load();
@@ -284,9 +371,11 @@ bool connected() { return g_conn_handle.load() != BLE_HS_CONN_HANDLE_NONE; }
 
 void request_refresh()
 {
-    if (g_conn_handle == BLE_HS_CONN_HANDLE_NONE) return;
-    struct os_mbuf* om = ble_hs_mbuf_from_flat("R", 1);
-    if (om) ble_gatts_notify_custom(g_conn_handle, g_tx_handle, om);
+    if (!g_active || !g_prepared) return;
+    // Keep an early page-open or manual request until TX is subscribed; a
+    // connection alone is insufficient to deliver a notification to the Mac.
+    g_refresh_pending = true;
+    send_pending_refresh();
 }
 
 bool poll_line(char* out, int out_size, int64_t* received_us)

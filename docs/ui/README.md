@@ -9,6 +9,7 @@
 - `estimated.png` / `reset-pending.png`：估算重置与等待服务端确认，均不自动回满。
 - `ble-error.png`：底层初始化失败时显示明确的蓝牙错误，界面仍可返回主页。
 - `no-data.png`：完全未知时显示 DATA UNAVAILABLE，不伪装为 0% 或 100%。
+- `connecting.png` / `syncing.png`：保留原等待文案，末尾追加蓝牙连接 / 额度同步状态及等待秒数；每 5 秒更新一次，连接状态变化立即更新。
 - `codex-icon.png`：透明背景的独立 Codex 图标。
 - `icon-inverted.png`：同一个图标在黑色卡片上反白；普通、斜线主页均使用它。
 

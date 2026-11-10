@@ -57,6 +57,7 @@ lv_obj_t* CodexScreen::Create() {
     lv_obj_add_event_cb(v->face.home_target(),[](lv_event_t*){ScreenRequestHome();},LV_EVENT_CLICKED,nullptr);
     VkKeyScreenDesc desc{};desc.factory=Create;desc.on_boot_click=refresh;desc.on_key=panel_key;
     VkKey_AttachScreen(screen,"codex",desc);
+    refresh();  // Opening the page is equivalent to tapping LAST UPDATED once.
     v->timer=lv_timer_create(update,1000,v);update(v->timer);
     lv_obj_add_event_cb(screen,[](lv_event_t* e){
         auto* v=static_cast<View*>(lv_event_get_user_data(e));

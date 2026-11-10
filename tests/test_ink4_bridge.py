@@ -19,3 +19,10 @@ class Ink4BridgeTests(unittest.TestCase):
         self.assertEqual(args.interval,300)
         self.assertIn('CodexInkMonitor',args.state)
         self.assertFalse(args.enable_probe)
+
+    def test_cached_device_name_matches_before_scan_response_arrives(self):
+        dev=SimpleNamespace(address='ink4-id',name='Codex Ink')
+        self.assertTrue(matches_device(dev,SimpleNamespace(local_name=None)))
+        self.assertFalse(matches_device(dev,SimpleNamespace(local_name='Codex Watch')))
+        self.assertFalse(matches_device(SimpleNamespace(address='watch-id',name='Codex Watch'),
+                                        SimpleNamespace(local_name=None)))
