@@ -1,5 +1,9 @@
 """Checked, idempotent low-power integration into the isolated firmware copy."""
 from pathlib import Path
+try:
+    from .integrate_background_power import integrate_background_power
+except ImportError:
+    from integrate_background_power import integrate_background_power
 
 
 def replace_once(text, old, new, name):
@@ -21,6 +25,8 @@ def integrate_power(output: Path):
         patches[path] = replace_once(text, old, new, rel)
 
     base = 'main/boards/common/power_policy/'
+    edit(base+'power_policy.cc', 'static const char* TAG = \"PowerPolicy\";',
+         'static const char* TAG = \"PowerPolicy\";\nstatic std::atomic<bool> s_codex_background_idle{false};')
     edit(base+'power_policy.cc', '#include \"power_policy.h\"', '#include \"power_policy.h\"\n#include \"power/idle_profile.h\"')
     edit(base+'power_policy.h', '    kCount\n',
          '    CodexMonitor, // Display stays visible; allow automatic light sleep only while idle.\n    kCount\n')
@@ -38,11 +44,17 @@ def integrate_power(output: Path):
     # verifies a unique full line to reject changes in the upstream implementation.
     edit(base+'power_policy.cc', '                power_hw_cpu_freq_set(mhz);',
          '                power_hw_cpu_mode_set(mhz < 0 ? -mhz : mhz, mhz < 0);')
+    # Upgrade previously generated copies of the first idle-sleep profile.
+    policy_text = (output / (base+'power_policy.cc')).read_text()
+    if 'A negative queue value encodes' in policy_text and 's_codex_background_idle.store(' not in policy_text:
+        edit(base+'power_policy.cc', '    const int cpu_request = codex_idle ? -80 :',
+             '    s_codex_background_idle.store(codex_idle, std::memory_order_relaxed);\n    const int cpu_request = codex_idle ? -80 :')
     edit(base+'power_policy.cc', '    const Mode prev = mode;', '''    // A negative queue value encodes the Codex-only automatic sleep profile.
     // Queue before the same-mode fast path: activity can change without a mode change.
     const bool codex_idle = codex_power::allow_auto_sleep(
         NeedHeld(PowerNeed::CodexMonitor), next == Mode::AppIdle,
         NeedHeld(PowerNeed::UsbVirtualDisk) || NeedHeld(PowerNeed::StandbyInhibit), InactiveUsLocked());
+    s_codex_background_idle.store(codex_idle, std::memory_order_relaxed);
     const int cpu_request = codex_idle ? -80 :
         (next == Mode::AppIdle ? idle_cpu_mhz : CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
     QueueCpuMhzLocked(cpu_request);
@@ -161,6 +173,7 @@ void TouchFeedInterrupt(esp_lcd_touch_handle_t tp) {
         edit('managed_components/espressif__button/iot_button.c',
              '        button_timer.name = "button_timer";',
              '        button_timer.name = "button_timer";\n        button_timer.skip_unhandled_events = true; // Codex automatic idle sleep')
+    integrate_background_power(output, edit)
     for path, text in patches.items():
         if path.read_text() != text:
             path.write_text(text)

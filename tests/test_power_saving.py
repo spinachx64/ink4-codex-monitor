@@ -178,6 +178,39 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.provider.fetch.await_count, 1)
         self.assertEqual(self.link.revision, 1)
 
+    async def test_activation_requeries_and_publishes_confirmed_reset(self):
+        refreshed = {'h': Window(0, 1800018000), 'w': None}
+        self.provider.fetch.side_effect = [windows(), refreshed]
+        activator = SimpleNamespace(activate_if_due=AsyncMock(return_value=True))
+        self.link.connect()
+        self.start(poll(self.args, self.state, self.provider, self.link, activator))
+        await self.settle()
+        self.assertEqual(self.provider.fetch.await_count, 2)
+        self.assertEqual(self.state.windows()['h'].reset, refreshed['h'].reset)
+        self.assertEqual(self.link.revision, 2)
+        activator.activate_if_due.assert_awaited_once_with(windows())
+
+    async def test_activation_failure_preserves_successful_quota_and_poll_interval(self):
+        activator = SimpleNamespace(activate_if_due=AsyncMock(side_effect=OSError))
+        self.link.connect()
+        self.start(poll(self.args, self.state, self.provider, self.link, activator))
+        await self.settle()
+        self.assertEqual(self.state.windows()['h'].source, 'api')
+        self.assertEqual(self.link.revision, 1)
+        await self.advance(299)
+        self.assertEqual(self.provider.fetch.await_count, 1)
+        await self.advance(1)
+        self.assertEqual(self.provider.fetch.await_count, 2)
+
+    async def test_activation_refresh_failure_keeps_latest_successful_data(self):
+        self.provider.fetch.side_effect = [windows(), QuotaError('network_error')]
+        activator = SimpleNamespace(activate_if_due=AsyncMock(return_value=True))
+        self.link.connect()
+        self.start(poll(self.args, self.state, self.provider, self.link, activator))
+        await self.settle()
+        self.assertEqual(self.state.windows()['h'].source, 'api')
+        self.assertEqual(self.link.revision, 1)
+
     async def test_query_can_finish_offline_without_starting_another(self):
         release = asyncio.Event()
 

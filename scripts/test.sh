@@ -10,5 +10,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor -I"$CJSON_DIR" \
 .state/test_quota
 c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor tests/test_idle_profile.cpp -o .state/test_idle_profile
 .state/test_idle_profile
-python3 -m py_compile scripts/prepare_firmware.py scripts/update_firmware.py scripts/integrate_power.py
+c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor tests/test_charger_worker.cpp -o .state/test_charger_worker
+.state/test_charger_worker
+python3 -m py_compile scripts/prepare_firmware.py scripts/update_firmware.py scripts/integrate_power.py scripts/integrate_background_power.py
 echo 'Quota model checks passed.'

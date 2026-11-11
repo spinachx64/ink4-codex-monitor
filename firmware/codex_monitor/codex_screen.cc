@@ -39,7 +39,7 @@ void power_diagnostic(int64_t now) {
     ESP_LOGI("CodexPower","pm=%s min=%d max=%d auto_ls=%d %s",
              esp_err_to_name(pm_rc),pm.min_freq_mhz,pm.max_freq_mhz,pm.light_sleep_enable,ble);
     // Includes active NO_LIGHT_SLEEP locks and accumulated light-sleep time.
-    // Once a minute, only while this page is open; no flash writes or UI updates.
+    // First after one minute, then every five minutes to retain longer SD logs.
     char* dump=nullptr;size_t length=0;
     if(FILE* stream=open_memstream(&dump,&length)) {
         esp_pm_dump_locks(stream);fclose(stream);
@@ -80,7 +80,7 @@ void update(lv_timer_t* timer) {
         v->status[0]=h;v->status[1]=w;
     }
     if(now>=v->nextDiagnosticUs) {
-        power_diagnostic(now);v->nextDiagnosticUs=now+60000000;
+        power_diagnostic(now);v->nextDiagnosticUs=now+300000000;
     }
     static int64_t loggedPacket=0;
     if(lastPacketUs && loggedPacket!=lastPacketUs) {

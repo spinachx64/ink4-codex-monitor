@@ -11,6 +11,7 @@ import time
 from .ble_bridge import BridgeLink, ble_loop
 from .quota_provider import CodexQuotaProvider, QuotaError
 from .quota_probe import probe_once, estimate
+from .cycle_activator import CycleActivator
 from .state import State
 from .protocol import encode
 
@@ -26,6 +27,8 @@ def arguments():
     p.add_argument("--device", help="optional macOS BLE device UUID")
     p.add_argument("--once", action="store_true")
     p.add_argument("--enable-probe", action="store_true", help="authorize ONE real Codex request when 5H is absent")
+    p.add_argument("--no-auto-activate", dest="auto_activate", action="store_false",
+                   help="disable automatic 5H cycle activation (enabled by default; real Codex request)")
     p.add_argument("--log-file")
     args = p.parse_args()
     if args.interval < 5:
@@ -33,7 +36,7 @@ def arguments():
     return args
 
 
-async def poll(args, state, provider, link):
+async def poll(args, state, provider, link, activator=None):
     failures = 0
     last_fetch = None
     retry_at = 0.0
@@ -72,6 +75,17 @@ async def poll(args, state, provider, link):
             log.info("quota updated via %s; 5H=%s weekly=%s", provider.last_source,
                      windows["h"].source if windows["h"] else "missing_window",
                      windows["w"].source if windows["w"] else "missing_window")
+            if activator is not None:
+                try:
+                    if await activator.activate_if_due(windows):
+                        refreshed = await provider.fetch()
+                        state.update(refreshed)
+                        link.publish(success_session=session)
+                        log.info("quota refreshed after automatic 5H activation")
+                except (QuotaError, OSError, ValueError, TimeoutError):
+                    # Activation must not turn an otherwise successful quota
+                    # query into an outage or discard its fresh data.
+                    log.warning("automatic activation/refresh failed; retaining latest quota data")
         except (QuotaError, OSError, ValueError) as exc:
             failures += 1
             log.warning("quota read: %s", exc.status if isinstance(exc, QuotaError) else "network_error")
@@ -103,8 +117,10 @@ async def run(args):
             print(encode(state.next_sequence(), windows).decode(), end="")
             return
         link = BridgeLink()
+        activator = (CycleActivator(args.codex, state_path.with_suffix(".activation.json"))
+                     if getattr(args, "auto_activate", True) else None)
         async with asyncio.TaskGroup() as group:
-            group.create_task(poll(args, state, provider, link))
+            group.create_task(poll(args, state, provider, link, activator))
             group.create_task(ble_loop(state, link, args.device))
 
 
