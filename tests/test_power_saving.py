@@ -13,6 +13,7 @@ from bridge.quota_normalizer import Window
 from bridge.quota_provider import QuotaError
 from bridge.state import State
 from scripts.update_firmware import MANAGED_CONFIG, configure, update
+from scripts.integrate_power import replace_once
 
 
 def windows(used=25):
@@ -446,10 +447,20 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class FirmwareConfigTests(unittest.TestCase):
+    def test_integration_patch_is_idempotent_and_rejects_ambiguous_upstream(self):
+        old = 'before\nunique anchor\nafter\n'
+        updated = replace_once(old, 'unique anchor', 'managed replacement', 'policy')
+        self.assertEqual(replace_once(updated, 'unique anchor', 'managed replacement', 'policy'), updated)
+        for incompatible in ('anchor removed upstream', old + old):
+            with self.assertRaisesRegex(ValueError, 'unsupported firmware integration anchor: policy'):
+                replace_once(incompatible, 'unique anchor', 'managed replacement', 'policy')
+
     def test_config_is_idempotent_and_keeps_unmanaged_options(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / 'sdkconfig'
             config.write_text('# vendor settings\nCONFIG_CPU_FREQUENCY=240\n'
+                              'CONFIG_NEWLIB_NANO_FORMAT=y\n'
+                              'CONFIG_LIBC_NEWLIB_NANO_FORMAT=y\n'
                               '# CONFIG_BT_ENABLED is not set\nCONFIG_BT_ENABLED=n\n'
                               '# CONFIG_BT_CTRL_MODEM_SLEEP is not set\n'
                               'CONFIG_BT_CTRL_LPCLK_SEL_RTC_SLOW=y\n')
@@ -468,6 +479,8 @@ class FirmwareConfigTests(unittest.TestCase):
             self.assertIn('CONFIG_BT_CTRL_MODEM_SLEEP=y\n', first)
             self.assertIn('CONFIG_BT_CTRL_MODEM_SLEEP_MODE_1=y\n', first)
             self.assertIn('CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL=y\n', first)
+            self.assertIn('# CONFIG_NEWLIB_NANO_FORMAT is not set\n', first)
+            self.assertIn('# CONFIG_LIBC_NEWLIB_NANO_FORMAT is not set\n', first)
 
     def test_kconfig_output_does_not_get_rewritten_for_hidden_disabled_choices(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -492,9 +505,12 @@ class FirmwareConfigTests(unittest.TestCase):
             vendor.write_text('user customization')
             (output / 'CODEX_MONITOR_BASELINE.txt').write_text('baseline\n')
             (output / 'sdkconfig').write_text('CONFIG_USER_OPTION=y\n')
-            with patch('scripts.update_firmware.ROOT', root), patch('sys.stdout', io.StringIO()):
+            with patch('scripts.update_firmware.ROOT', root), patch('sys.stdout', io.StringIO()), \
+                    patch('scripts.update_firmware.integrate_power') as integrate:
                 update(output)
                 update(output)
+            self.assertEqual(integrate.call_count, 2)
+            integrate.assert_called_with(output.resolve())
             self.assertEqual((output / 'main/codex_monitor/screen.cc').read_text(), 'new source')
             self.assertEqual(vendor.read_text(), 'user customization')
             self.assertIn('CONFIG_USER_OPTION=y\n', (output / 'sdkconfig').read_text())

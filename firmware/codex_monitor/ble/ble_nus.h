@@ -5,6 +5,7 @@
  */
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace ble_nus {
 
@@ -27,5 +28,6 @@ bool poll_line(char* out, int out_size, int64_t* received_us = nullptr);
 // Closing the page cancels the pending request.
 void request_refresh();
 bool connected();
+void debug_format(char* out, size_t size);
 
 }  // namespace ble_nus

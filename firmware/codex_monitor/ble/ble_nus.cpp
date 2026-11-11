@@ -369,6 +369,19 @@ void pause()
 
 bool connected() { return g_conn_handle.load() != BLE_HS_CONN_HANDLE_NONE; }
 
+void debug_format(char* out, size_t size)
+{
+    struct ble_gap_conn_desc desc = {};
+    const auto handle = g_conn_handle.load();
+    if (handle != BLE_HS_CONN_HANDLE_NONE && !ble_gap_conn_find(handle, &desc)) {
+        snprintf(out, size, "ble=connected interval_us=%u latency=%u timeout_ms=%u",
+                 unsigned(desc.conn_itvl) * 1250, unsigned(desc.conn_latency),
+                 unsigned(desc.supervision_timeout) * 10);
+    } else {
+        snprintf(out, size, "ble=%s", g_active ? "advertising" : "inactive");
+    }
+}
+
 void request_refresh()
 {
     if (!g_active || !g_prepared) return;

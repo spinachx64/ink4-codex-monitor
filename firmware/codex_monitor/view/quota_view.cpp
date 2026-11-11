@@ -193,15 +193,9 @@ void QuotaView::update(const quota::Store& store,bool connected,int64_t now,
     set(alert_help_,bleError?"RESTART DEVICE TO RETRY.\nTHE BRIDGE HAS NOT CONNECTED.":
         "WAITING FOR QUOTA DATA.\nTAP THE FOOTER TO REFRESH.\nPRESS HOME TO RETURN.");
     const bool waiting=!any && !bleError;
-    if(waiting && !waiting_) waiting_since_us_=now;
-    waiting_=waiting;
     if(waiting) {
-        // Only this additional line changes, in five-second steps. Connection
-        // transitions still show immediately; the existing help stays intact.
-        const auto seconds=std::max<int64_t>(0,now-waiting_since_us_)/5000000*5;
-        snprintf(value,sizeof(value),"%s / %dS",connected?"SYNCING QUOTA":"CONNECTING BLE",
-                 static_cast<int>(std::min<int64_t>(seconds,99999)));
-        set(progress_,value);
+        // A persistent offline device must not refresh the e-paper periodically.
+        set(progress_,connected?"SYNCING QUOTA":"CONNECTING BLE");
     }
     show(progress_,waiting);
     show(alert_,!any);

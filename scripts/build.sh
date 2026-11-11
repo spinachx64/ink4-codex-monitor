@@ -10,4 +10,7 @@ if [[ ! -d build-firmware ]]; then
 fi
 python3 scripts/update_firmware.py --output build-firmware
 cd build-firmware
+# Populate pinned dependencies before applying the checked button timer patch.
+idf.py reconfigure
+python3 ../scripts/update_firmware.py --output .
 idf.py build "$@"

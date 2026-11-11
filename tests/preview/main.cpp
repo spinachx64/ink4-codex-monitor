@@ -57,17 +57,17 @@ int main(int argc, char**) {
     store.windows[0].clock.anchor(1000000,1000000000,now);
     face.update(store,true,now,now);save("docs/ui/reset-pending.png.ppm");
     store=quota::Store{};face.update(store,false,now,0);save("docs/ui/no-data.png.ppm");
-    assert(find_text(lv_screen_active(),"CONNECTING BLE / 0S"));
+    assert(find_text(lv_screen_active(),"CONNECTING BLE"));
     face.update(store,false,now+20000000,0);save("docs/ui/connecting.png.ppm");
-    assert(find_text(lv_screen_active(),"CONNECTING BLE / 20S"));
+    assert(find_text(lv_screen_active(),"CONNECTING BLE"));
     assert(find_text(lv_screen_active(),"WAITING FOR QUOTA DATA.\nTAP THE FOOTER TO REFRESH.\nPRESS HOME TO RETURN."));
     for(int i=0;i<3;++i){lv_tick_inc(40);lv_timer_handler();}flushes=0;
-    for(int i=1;i<5;++i){face.update(store,false,now+(20+i)*1000000,0);lv_tick_inc(40);lv_timer_handler();}
-    assert(flushes==0); // No redraw inside the same five-second progress step.
+    for(int i=1;i<5;++i){face.update(store,false,now+i*3600000000LL,0);lv_tick_inc(40);lv_timer_handler();}
+    assert(flushes==0); // No periodic redraw while waiting offline.
     face.update(store,true,now+25000000,0);save("docs/ui/syncing.png.ppm");
-    assert(find_text(lv_screen_active(),"SYNCING QUOTA / 25S"));
+    assert(find_text(lv_screen_active(),"SYNCING QUOTA"));
     face.update(store,false,now,0,false,true);save("docs/ui/ble-error.png.ppm");
-    auto* progress=find_text(lv_screen_active(),"SYNCING QUOTA / 25S");
+    auto* progress=find_text(lv_screen_active(),"SYNCING QUOTA");
     assert(progress && lv_obj_has_flag(progress,LV_OBJ_FLAG_HIDDEN));
     auto* screen=lv_obj_create(nullptr);lv_screen_load(screen);
     auto* black=lv_obj_create(screen);lv_obj_set_size(black,220,130);

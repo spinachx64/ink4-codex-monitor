@@ -7,6 +7,7 @@ import subprocess
 from integrate_home import integrate_home
 from patch_display import patch_display
 from update_firmware import configure
+from integrate_power import integrate_power
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,7 @@ idf_component_register(SRCS ${SOURCES}''', 1)
     cmake.write_text(text)
     integrate_home(source, output)
     patch_display(source, output)
+    integrate_power(output)
     configure(output / 'sdkconfig')
     revision = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'],
                               capture_output=True, text=True, check=True).stdout.strip()
