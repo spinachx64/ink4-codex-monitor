@@ -178,6 +178,35 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.provider.fetch.await_count, 1)
         self.assertEqual(self.link.revision, 1)
 
+    async def test_manual_refresh_interrupts_backoff_but_preserves_throttle(self):
+        self.provider.fetch.side_effect = [QuotaError('network_error'), windows(), windows()]
+        with patch('bridge.main.random.uniform', return_value=1):
+            self.link.connect()
+            self.start_poll()
+            await self.settle()
+            await self.advance(1)
+            self.link.manual_refresh.set()
+            self.link.refresh.set()
+            await self.settle()
+            self.assertEqual(self.provider.fetch.await_count, 1)
+            await self.advance(4)
+            self.assertEqual(self.provider.fetch.await_count, 2)
+
+    async def test_manual_refresh_interrupts_an_already_started_retry_sleep(self):
+        self.provider.fetch.side_effect = [QuotaError('network_error'), windows()]
+        with patch('bridge.main.random.uniform', return_value=1):
+            self.link.connect()
+            self.start_poll()
+            await self.settle()
+            self.link.refresh.set()  # Wake the interval wait, entering retry sleep.
+            await self.settle()
+            await self.advance(6)
+            self.assertEqual(self.provider.fetch.await_count, 1)
+            self.link.manual_refresh.set()
+            self.link.refresh.set()
+            await self.settle()
+            self.assertEqual(self.provider.fetch.await_count, 2)
+
     async def test_activation_requeries_and_publishes_confirmed_reset(self):
         refreshed = {'h': Window(0, 1800018000), 'w': None}
         self.provider.fetch.side_effect = [windows(), refreshed]

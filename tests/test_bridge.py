@@ -8,7 +8,7 @@ from bridge.quota_normalizer import Window, normalize
 from bridge.protocol import encode
 from bridge.state import State
 from bridge.quota_probe import probe_once
-from bridge.quota_provider import CodexQuotaProvider, QuotaError
+from bridge.quota_provider import CodexQuotaProvider, QuotaError, classify
 
 
 def window(duration=300, used=25, reset=1800000000):
@@ -16,6 +16,11 @@ def window(duration=300, used=25, reset=1800000000):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_rate_limits_endpoint_name_is_not_a_rate_limit_error(self):
+        self.assertEqual(classify('failed to fetch codex rate limits: error sending request for url'), 'network_error')
+        for message in ('HTTP 429', 'rate limit exceeded', 'too many requests', 'rate_limit_exceeded'):
+            self.assertEqual(classify(message), 'rate_limited')
+
     def test_zero_is_known_missing_is_unknown(self):
         result = normalize({"rateLimits": {"primary": window(used=0)}})
         self.assertEqual(result["h"].remaining, 100)

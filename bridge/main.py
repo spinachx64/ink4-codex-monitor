@@ -42,10 +42,19 @@ async def poll(args, state, provider, link, activator=None):
     retry_at = 0.0
     while True:
         await link.connected.wait()
+        if link.manual_refresh.is_set():
+            link.manual_refresh.clear()
+            retry_at = 0.0
+            log.info("manual refresh bypassing quota retry backoff")
         now = time.monotonic()
         delay = max(0, (last_fetch + 5 - now) if last_fetch is not None else 0, retry_at - now)
         if delay:
-            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(link.manual_refresh.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+            else:
+                continue  # Recompute the five-second throttle after bypassing backoff.
         if not link.connected.is_set():
             continue
         # Requests during throttle waits or the same fetch are coalesced. A new

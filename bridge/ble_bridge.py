@@ -15,6 +15,7 @@ class BridgeLink:
     def __init__(self):
         self.connected = asyncio.Event()
         self.refresh = asyncio.Event()
+        self.manual_refresh = asyncio.Event()
         self.changed = asyncio.Event()
         self.session = 0
         self.fresh_session = None
@@ -89,7 +90,9 @@ async def ble_session(target, state, link, client_type):
         if (session == link.session and link.connected.is_set()
                 and not disconnected.is_set() and now - last_request >= 5):
             last_request = now
+            link.manual_refresh.set()
             link.refresh.set()
+            log.info("BLE manual quota refresh requested")
 
     try:
         async with client_type(

@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 import urllib.error
 import urllib.request
@@ -18,7 +19,9 @@ def classify(message):
     text = str(message).lower()
     if any(s in text for s in ("401", "403", "auth", "login", "sign in")):
         return "no_auth"
-    return "rate_limited" if any(s in text for s in ("429", "rate limit")) else "network_error"
+    return "rate_limited" if (re.search(r"\b429\b", text) or any(
+        s in text for s in ("rate limit exceeded", "rate limit reached", "rate limited",
+                           "rate_limit_exceeded", "too many requests"))) else "network_error"
 
 
 class CodexQuotaProvider:
