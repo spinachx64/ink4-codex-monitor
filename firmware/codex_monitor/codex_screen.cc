@@ -60,6 +60,8 @@ bool panel_key(const char* key) {
 }
 void update(lv_timer_t* timer) {
     auto* v=static_cast<View*>(lv_timer_get_user_data(timer));
+    if(auto* display=LVAdapterDisplay::Instance())
+        display->SetCodexInputIdle(PowerPolicy::GetInstance().IsCodexIdle());
     char line[256];int64_t received;bool confirmed[2];
     const bool applied=ble_nus::poll_line(line,sizeof(line),&received) &&
        store.apply(line,strlen(line),received,confirmed);
@@ -109,6 +111,7 @@ lv_obj_t* CodexScreen::Create() {
     refresh();  // Opening the page is equivalent to tapping LAST UPDATED once.
     v->timer=lv_timer_create(update,1000,v);update(v->timer);
     lv_obj_add_event_cb(screen,[](lv_event_t* e){
+        if(auto* display=LVAdapterDisplay::Instance()) display->SetCodexInputIdle(false);
         auto* v=static_cast<View*>(lv_event_get_user_data(e));
         lv_timer_delete(v->timer);delete v;ble_nus::pause();
         PowerPolicy::GetInstance().Release(PowerNeed::CodexMonitor);

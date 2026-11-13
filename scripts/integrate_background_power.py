@@ -3,6 +3,64 @@ import hashlib
 
 
 def integrate_background_power(output, edit):
+    # request_wake previously notified only during the adapter's own pause-mode
+    # sleep. Codex parks the input timer while leaving the worker running;
+    # explicitly kick that worker too, rather than waiting for its 1s timeout.
+    rel = 'managed_components/espressif__esp_lvgl_adapter/src/adapter/esp_lv_adapter.c'
+    if (output / rel).exists():
+        edit(rel, '''esp_err_t esp_lv_adapter_request_wake(void)
+{
+    ESP_RETURN_ON_FALSE(s_ctx.inited, ESP_ERR_INVALID_STATE, TAG, "Adapter not initialized");
+
+    adapter_auto_sleep_mark_activity_internal();
+    if (adapter_auto_sleep_should_latch_wake_request()) {
+        s_ctx.auto_sleep.wake_requested = true;
+        adapter_auto_sleep_notify_task();
+    }
+
+    return ESP_OK;
+}''', '''esp_err_t esp_lv_adapter_request_wake(void)
+{
+    ESP_RETURN_ON_FALSE(s_ctx.inited, ESP_ERR_INVALID_STATE, TAG, "Adapter not initialized");
+
+    adapter_auto_sleep_mark_activity_internal();
+    if (adapter_auto_sleep_should_latch_wake_request()) {
+        s_ctx.auto_sleep.wake_requested = true;
+    }
+    adapter_auto_sleep_notify_task(); // Also wake Codex's parked-input worker.
+    return ESP_OK;
+}''')
+
+    rel = 'main/boards/common/audio/SimpleUart.hpp'
+    original = (output / rel).read_text()
+    marker = '#include "power/uart_receive_task.inc"'
+    if marker not in original:
+        start = original.index('    // UART接收任务\n')
+        end = original.index('    // 常量定义', start)
+        old = original[start:end]
+        if old.count('pdMS_TO_TICKS(100)') != 1 or old.count('uart_read_bytes(') != 1:
+            raise ValueError('unsupported firmware integration anchor: UART receive worker')
+        edit(rel, old, '    ' + marker + '\n\n')
+    edit(rel, '#include <freertos/task.h>', '#include <freertos/task.h>\n#include <freertos/queue.h>')
+
+    rel = 'main/display/lv_adapter_display.h'
+    edit(rel, '    void KickTouchInput();',
+         '    void KickTouchInput();\n    void SetCodexInputIdle(bool idle);')
+    rel = 'main/display/lv_adapter_display.cc'
+    edit(rel, 'bool s_standby_background_paused = false;',
+         'bool s_codex_input_idle = false; // Protected by the recursive LVGL lock.\nbool s_standby_background_paused = false;')
+    edit(rel, '    if (kick_again) {\n        if (auto* disp = LVAdapterDisplay::Instance()) {',
+         '''    if (auto* disp = LVAdapterDisplay::Instance()) {
+        disp->SetCodexInputIdle(s_codex_input_idle);
+    }
+    if (kick_again) {
+        if (auto* disp = LVAdapterDisplay::Instance()) {''')
+    edit(rel, '''void LVAdapterDisplay::KickTouchInput() {
+    if (touch_indev_ != nullptr) {
+        esp_lv_adapter_touch_notify_interrupt(touch_indev_);
+    }
+}''', '#include "power/touch_input_idle.inc"')
+
     # The region digest rejects unexpected upstream charger changes rather than
     # silently replacing safety-critical logic. The original stays in upstream.
     rel = 'main/boards/common/power/cx25601n.cc'
