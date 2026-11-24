@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate the code-drawn launcher mark (no external image dependencies)."""
+import math
 from pathlib import Path
 from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[1]
@@ -55,5 +56,45 @@ with (OUT/'codex_icon.c').open('a') as f:
 const lv_image_dsc_t codex_week_track = {
  .header = {.magic=LV_IMAGE_HEADER_MAGIC, .cf=LV_COLOR_FORMAT_I1, .w=416, .h=18, .stride=52},
  .data_size=sizeof(week_track), .data=week_track,
+};
+''')
+
+# AGY inner ring track: 252x252, R=102..126 (24px stroke), full 360 deg.
+stride=32
+pixels=bytearray(stride*252)
+for y in range(252):
+    for x in range(252):
+        r2=(x-125.5)**2+(y-125.5)**2
+        if 102**2<=r2<=126**2 and x%4==0 and y%4<2:
+            pixels[y*stride+x//8]|=1<<(7-x%8)
+values=palette+pixels
+rows=[', '.join(f'0x{x:02x}' for x in values[i:i+20]) for i in range(0,len(values),20)]
+with (OUT/'codex_icon.c').open('a') as f:
+    f.write('\nstatic const uint8_t agy_inner[] = {\n'+',\n'.join(rows)+'''\n};
+const lv_image_dsc_t agy_inner_track = {
+ .header = {.magic=LV_IMAGE_HEADER_MAGIC, .cf=LV_COLOR_FORMAT_I1, .w=252, .h=252, .stride=32},
+ .data_size=sizeof(agy_inner), .data=agy_inner,
+};
+''')
+
+# AGY outer dual-semicircle track: 300x300, R=136..150 (14px stroke),
+# left semicircle 100..260 deg (WK) and right semicircle 280..80 deg (5H).
+stride=38
+pixels=bytearray(stride*300)
+for y in range(300):
+    for x in range(300):
+        dx,dy=x-149.5,y-149.5
+        r2=dx*dx+dy*dy
+        if 136**2<=r2<=150**2 and x%4==0 and y%4<2:
+            ang=math.degrees(math.atan2(dy,dx))%360
+            if (100.0<=ang<=260.0) or (ang>=280.0 or ang<=80.0):
+                pixels[y*stride+x//8]|=1<<(7-x%8)
+values=palette+pixels
+rows=[', '.join(f'0x{x:02x}' for x in values[i:i+20]) for i in range(0,len(values),20)]
+with (OUT/'codex_icon.c').open('a') as f:
+    f.write('\nstatic const uint8_t agy_outer[] = {\n'+',\n'.join(rows)+'''\n};
+const lv_image_dsc_t agy_outer_track = {
+ .header = {.magic=LV_IMAGE_HEADER_MAGIC, .cf=LV_COLOR_FORMAT_I1, .w=300, .h=300, .stride=38},
+ .data_size=sizeof(agy_outer), .data=agy_outer,
 };
 ''')

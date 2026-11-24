@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 mkdir -p .state
 cc -c "$CJSON_DIR/cJSON.c" -I"$CJSON_DIR" -o .state/cJSON.o
 c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor -I"$CJSON_DIR" \
-  tests/test_quota.cpp firmware/codex_monitor/model/quota_state.cpp .state/cJSON.o -o .state/test_quota
+  tests/test_quota.cpp firmware/codex_monitor/model/quota_state.cpp firmware/codex_monitor/model/agy_state.cpp .state/cJSON.o -o .state/test_quota
 .state/test_quota
 c++ -std=c++17 -Wall -Wextra -Werror -Ifirmware/codex_monitor tests/test_idle_profile.cpp -o .state/test_idle_profile
 .state/test_idle_profile

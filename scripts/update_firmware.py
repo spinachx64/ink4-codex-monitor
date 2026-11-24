@@ -63,6 +63,27 @@ def configure(config):
         config.write_text(updated)
 
 
+def sync_cmake_sources(cmake: Path):
+    if not cmake.is_file():
+        return
+    text = cmake.read_text()
+    updated = text
+    if '"codex_monitor/model/agy_state.cpp"' not in updated:
+        updated = updated.replace(
+            '"codex_monitor/model/quota_state.cpp")',
+            '"codex_monitor/model/quota_state.cpp"\n                    "codex_monitor/model/agy_state.cpp")',
+            1,
+        )
+    if '"codex_monitor/view/agy_view.cpp"' not in updated:
+        updated = updated.replace(
+            '"codex_monitor/view/quota_view.cpp" "codex_monitor/view/codex_icon.c"',
+            '"codex_monitor/view/quota_view.cpp" "codex_monitor/view/agy_view.cpp" "codex_monitor/view/codex_icon.c"',
+            1,
+        )
+    if updated != text:
+        cmake.write_text(updated)
+
+
 def update(output):
     output = output.resolve()
     if not (output / 'CODEX_MONITOR_BASELINE.txt').is_file():
@@ -72,6 +93,7 @@ def update(output):
         raise ValueError('expected a generated main/codex_monitor directory')
     print(f'Updating {destination} and applying checked Codex power/touch integration.')
     shutil.copytree(ROOT / 'firmware/codex_monitor', destination, dirs_exist_ok=True)
+    sync_cmake_sources(output / 'main/CMakeLists.txt')
     configure(output / 'sdkconfig')
     integrate_power(output)
     print('Applied managed sdkconfig options (including Bluetooth modem sleep).')

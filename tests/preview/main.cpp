@@ -1,3 +1,4 @@
+#include "../../firmware/codex_monitor/view/agy_view.h"
 #include "../../firmware/codex_monitor/view/quota_view.h"
 #include <lvgl.h>
 #include <cassert>
@@ -76,5 +77,24 @@ int main(int argc, char**) {
     lv_obj_set_style_image_recolor(icon,lv_color_white(),0);
     lv_obj_set_style_image_recolor_opa(icon,LV_OPA_COVER,0);
     lv_obj_center(icon);save("docs/ui/icon-inverted.png.ppm");
+
+    // AGY dual-ring views (active consumption + 100% full + zero idle redraw check).
+    auto* agyScreen=lv_obj_create(nullptr);lv_screen_load(agyScreen);
+    codex_ui::AgyView agyFace;agyFace.create(agyScreen);
+    quota::AgyStore agy;
+    for(auto& w:agy.gemini) {w.hasUsage=true;w.source=quota::Source::Api;w.updatedUs=now;}
+    for(auto& w:agy.external) {w.hasUsage=true;w.source=quota::Source::Api;w.updatedUs=now;}
+    agy.gemini[0].used=4;agy.gemini[1].used=1;
+    agy.gemini[0].clock.anchor(1000000,1000000000-269*60000,now);
+    agy.gemini[1].clock.anchor(1000000,1000000000-(6*24+23)*3600000LL,now);
+    agy.external[0].used=36;agy.external[1].used=18; // 5H=64%, WK=82%
+    agyFace.update(agy,true,now,now);save("docs/ui/agy-active.png.ppm");
+    for(int i=0;i<3;++i){lv_tick_inc(40);lv_timer_handler();}flushes=0;
+    for(int i=0;i<5;++i){agyFace.update(agy,true,now,now);lv_tick_inc(40);lv_timer_handler();}
+    fprintf(stderr,"agy idle flushes=%u\n",flushes);
+    assert(flushes==0); // Polling unchanged AGY data must not refresh the e-paper.
+    agy.gemini[0].used=0;agy.gemini[0].clock=quota::CountdownClock{};
+    agy.external[0].used=0;agy.external[1].used=0;
+    agyFace.update(agy,true,now,now);save("docs/ui/agy-full.png.ppm");
     printf("Snapshots and zero-idle-redraw check passed.\n");
 }

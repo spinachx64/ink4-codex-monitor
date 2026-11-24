@@ -12,6 +12,7 @@
 - `connecting.png` / `syncing.png`：保留原等待文案，末尾追加蓝牙连接 / 额度同步状态；只在连接状态变化时更新，不再持续刷新等待秒数。
 - `codex-icon.png`：透明背景的独立 Codex 图标。
 - `icon-inverted.png`：同一个图标在黑色卡片上反白；普通、斜线主页均使用它。
+- `agy-active.png` / `agy-full.png`：GOOGLE AGY 双环视图（内粗圆 24px 为 Gemini 5H，外细双半圆 14px 左 WK / 右 5H，底部单行对照，下半屏与 Codex 页保持一致；空闲重绘次数检查同样为零）。
 
 单色适配：圆环和周额度横条的空余区域使用 1-bit 点阵图案，避免浅灰量化为白色后消失。字体使用 SIL OFL 的 Inter 子集，许可证见 `firmware/codex_monitor/fonts/OFL.txt`。实际连接文案为 BLE，不采用设计稿中的演示 Wi-Fi 文案。
 

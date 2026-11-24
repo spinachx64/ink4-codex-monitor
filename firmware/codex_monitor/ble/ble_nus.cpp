@@ -46,15 +46,21 @@ const ble_uuid128_t kTxUuid = BLE_UUID128_INIT(
     0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
     0x93, 0xf3, 0xa3, 0xb5, 0x03, 0x00, 0x40, 0x6e);
 
-constexpr int kLineMax = 256;
+constexpr int kLineMax = 512;
+constexpr int kQueueCap = 4;
+
+struct LineSlot {
+    char text[kLineMax];
+    int64_t received_us = 0;
+};
 
 SemaphoreHandle_t g_mtx = nullptr;
 char g_assembling[kLineMax];   // partial bytes received so far (host task only)
 int g_assembling_len = 0;
 bool g_dropping = false;
-char g_ready[kLineMax];        // last complete line, guarded by g_mtx
-bool g_has_ready = false;
-int64_t g_ready_us = 0;
+LineSlot g_queue[kQueueCap];   // complete lines FIFO, guarded by g_mtx
+int g_q_head = 0;
+int g_q_count = 0;
 
 uint16_t g_tx_handle = 0;
 std::atomic<uint16_t> g_conn_handle{BLE_HS_CONN_HANDLE_NONE};
@@ -100,15 +106,20 @@ void request_low_power_params(struct ble_npl_event*)
     if (rc) ESP_LOGI(TAG, "power-saving connection request failed (%d); keeping current parameters", rc);
 }
 
-// Push a finished line to the shared slot under the mutex.
+// Push a finished line to the shared FIFO under the mutex.
 void publish_line(const char* line, int len)
 {
     if (len <= 0 || len >= kLineMax) return;
     if (xSemaphoreTake(g_mtx, portMAX_DELAY) == pdTRUE) {
-        memcpy(g_ready, line, len);
-        g_ready[len] = '\0';
-        g_has_ready = true;
-        g_ready_us = esp_timer_get_time();
+        if (g_q_count == kQueueCap) {
+            g_q_head = (g_q_head + 1) % kQueueCap;
+            --g_q_count;
+        }
+        auto& slot = g_queue[(g_q_head + g_q_count) % kQueueCap];
+        memcpy(slot.text, line, len);
+        slot.text[len] = '\0';
+        slot.received_us = esp_timer_get_time();
+        ++g_q_count;
         xSemaphoreGive(g_mtx);
     }
 }
@@ -199,7 +210,8 @@ int gap_event(struct ble_gap_event* event, void*)
             g_assembling_len = 0;
             g_dropping = false;
             if (xSemaphoreTake(g_mtx, portMAX_DELAY) == pdTRUE) {
-                g_has_ready = false;
+                g_q_head = 0;
+                g_q_count = 0;
                 xSemaphoreGive(g_mtx);
             }
             start_advertising();
@@ -361,7 +373,8 @@ void pause()
     if (connection != BLE_HS_CONN_HANDLE_NONE)
         ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
     if (g_mtx && xSemaphoreTake(g_mtx, portMAX_DELAY) == pdTRUE) {
-        g_has_ready = false;
+        g_q_head = 0;
+        g_q_count = 0;
         xSemaphoreGive(g_mtx);
     }
     ESP_LOGI(TAG, "Codex inactive: advertising and connection stopped");
@@ -396,13 +409,15 @@ bool poll_line(char* out, int out_size, int64_t* received_us)
     if (!g_mtx || !out || out_size <= 0) return false;
     bool got = false;
     if (xSemaphoreTake(g_mtx, 0) == pdTRUE) {
-        if (g_has_ready) {
-            int n = (int)strlen(g_ready);
+        if (g_q_count > 0) {
+            const auto& slot = g_queue[g_q_head];
+            int n = (int)strlen(slot.text);
             if (n >= out_size) n = out_size - 1;
-            memcpy(out, g_ready, n);
+            memcpy(out, slot.text, n);
             out[n] = '\0';
-            g_has_ready = false;
-            if (received_us) *received_us = g_ready_us;
+            if (received_us) *received_us = slot.received_us;
+            g_q_head = (g_q_head + 1) % kQueueCap;
+            --g_q_count;
             got = true;
         }
         xSemaphoreGive(g_mtx);

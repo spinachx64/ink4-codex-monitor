@@ -22,6 +22,12 @@ class State:
                 raise ValueError("bad cached timestamp")
             for value in self.data.get("windows", {}).values():
                 Window.restore(value)
+            if not isinstance(self.data.get("agy_windows", {}), dict):
+                raise ValueError("bad cached agy windows")
+            if not number(self.data.get("agy_updated_at", 0)):
+                raise ValueError("bad cached agy timestamp")
+            for value in self.data.get("agy_windows", {}).values():
+                Window.restore(value)
         except (OSError, ValueError, TypeError):
             self.data = {}
         self.data["sequence"] = max(int(self.data.get("sequence", 0)), int(time.time() * 1000) * 1000)
@@ -54,5 +60,24 @@ class State:
         if windows == self.data.get("windows", {}):
             return False
         self.data["windows"] = windows
+        self.save()
+        return True
+
+    def update_agy(self, windows):
+        self.data["agy_windows"] = {key: asdict(win) if win else None for key, win in windows.items()}
+        self.data["agy_updated_at"] = time.time()
+        self.save()
+
+    def agy_windows(self, failed=False):
+        stale = failed or time.time() - self.data.get("agy_updated_at", 0) > 900
+        return {key: replace(win, source="stale") if stale and win and win.source == "api" else win
+                for key, value in self.data.get("agy_windows", {}).items() for win in [Window.restore(value)]}
+
+    def mark_agy_failed(self):
+        """Persist only the first AGY transition to stale, retaining the query time."""
+        windows = {key: asdict(win) if win else None for key, win in self.agy_windows(failed=True).items()}
+        if windows == self.data.get("agy_windows", {}):
+            return False
+        self.data["agy_windows"] = windows
         self.save()
         return True

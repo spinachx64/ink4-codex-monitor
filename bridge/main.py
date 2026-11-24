@@ -9,11 +9,12 @@ import random
 import shutil
 import time
 from .ble_bridge import BridgeLink, ble_loop
+from .agy_provider import AgyQuotaProvider, default_agy_binary
 from .quota_provider import CodexQuotaProvider, QuotaError
 from .quota_probe import probe_once, estimate
 from .cycle_activator import CycleActivator
 from .state import State
-from .protocol import encode
+from .protocol import encode, encode_agy
 
 log = logging.getLogger(__name__)
 
@@ -21,11 +22,15 @@ log = logging.getLogger(__name__)
 def arguments():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--codex", default=shutil.which("codex") or "codex")
+    p.add_argument("--agy", default=default_agy_binary())
+    p.add_argument("--no-agy", dest="enable_agy", action="store_false",
+                   help="disable Antigravity (agy) quota polling")
     p.add_argument("--provider", choices=("auto", "app-server", "wham"), default="auto")
     p.add_argument("--interval", type=float, default=300)
     p.add_argument("--state", default="~/Library/Application Support/CodexInkMonitor/state.json")
     p.add_argument("--device", help="optional macOS BLE device UUID")
     p.add_argument("--once", action="store_true")
+    p.add_argument("--agy-once", action="store_true", help="read AGY quota once without BLE or inference")
     p.add_argument("--enable-probe", action="store_true", help="authorize ONE real Codex request when 5H is absent")
     p.add_argument("--no-auto-activate", dest="auto_activate", action="store_false",
                    help="disable automatic 5H cycle activation (enabled by default; real Codex request)")
@@ -111,6 +116,58 @@ async def poll(args, state, provider, link, activator=None):
                 pass
 
 
+async def poll_agy(args, state, provider, link):
+    failures = 0
+    last_fetch = None
+    retry_at = 0.0
+    while True:
+        await link.connected.wait()
+        if link.agy_manual_refresh.is_set():
+            link.agy_manual_refresh.clear()
+            retry_at = 0.0
+            log.info("manual refresh bypassing AGY retry backoff")
+        now = time.monotonic()
+        delay = max(0, (last_fetch + 5 - now) if last_fetch is not None else 0, retry_at - now)
+        if delay:
+            try:
+                await asyncio.wait_for(link.agy_manual_refresh.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+            else:
+                continue
+        if not link.connected.is_set():
+            continue
+        link.agy_refresh.clear()
+        session = link.session
+        last_fetch = time.monotonic()
+        try:
+            windows = await provider.fetch()
+            state.update_agy(windows)
+            link.publish_agy(success_session=session)
+            failures = 0
+            delay = args.interval
+            log.info("AGY quota updated via %s; gem5h=%s gemw=%s ext5h=%s extw=%s",
+                     provider.last_source,
+                     windows["gh"].source if windows.get("gh") else "missing",
+                     windows["gw"].source if windows.get("gw") else "missing",
+                     windows["ch"].source if windows.get("ch") else "missing",
+                     windows["cw"].source if windows.get("cw") else "missing")
+        except (QuotaError, OSError, ValueError) as exc:
+            failures += 1
+            log.warning("AGY quota read: %s", exc.status if isinstance(exc, QuotaError) else "network_error")
+            if state.mark_agy_failed():
+                link.publish_agy()
+            delay = min(900, 5 * 2**min(failures, 8)) * random.uniform(0.9, 1.1)
+        retry_at = time.monotonic() + delay if failures else 0.0
+        if session == link.session:
+            link.agy_refresh.clear()
+        if link.connected.is_set():
+            try:
+                await asyncio.wait_for(link.agy_refresh.wait(), timeout=delay)
+            except TimeoutError:
+                pass
+
+
 async def run(args):
     state_path = Path(args.state).expanduser()
     state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -121,15 +178,26 @@ async def run(args):
             raise SystemExit("Bridge already running with this state file") from None
         state = State(args.state)
         provider = CodexQuotaProvider(args.codex, args.provider)
+        agy_bin = getattr(args, "agy", None)
+        agy_enabled = getattr(args, "enable_agy", True) and bool(agy_bin)
+        agy_provider = AgyQuotaProvider(agy_bin) if agy_enabled else None
+        if getattr(args, "agy_once", False):
+            windows = await (agy_provider or AgyQuotaProvider(agy_bin or "agy")).fetch()
+            print(encode_agy(state.next_sequence(), windows).decode(), end="")
+            return
         if args.once:
             windows = await provider.fetch()
             print(encode(state.next_sequence(), windows).decode(), end="")
             return
+        if getattr(args, "enable_agy", True) and agy_provider is None:
+            log.info("agy CLI not found; running in Codex-only mode")
         link = BridgeLink()
         activator = (CycleActivator(args.codex, state_path.with_suffix(".activation.json"))
                      if getattr(args, "auto_activate", True) else None)
         async with asyncio.TaskGroup() as group:
             group.create_task(poll(args, state, provider, link, activator))
+            if agy_provider is not None:
+                group.create_task(poll_agy(args, state, agy_provider, link))
             group.create_task(ble_loop(state, link, args.device))
 
 

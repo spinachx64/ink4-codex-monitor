@@ -32,9 +32,10 @@ def prepare(source, output):
         raise ValueError('unsupported CMake structure')
     text = text.replace(marker, '''list(APPEND SOURCES "codex_monitor/codex_screen.cc"
                     "codex_monitor/ble/ble_nus.cpp"
-                    "codex_monitor/model/quota_state.cpp")
+                    "codex_monitor/model/quota_state.cpp"
+                    "codex_monitor/model/agy_state.cpp")
 file(GLOB CODEX_FONTS "codex_monitor/fonts/codex_inter_*.c")
-list(APPEND SOURCES "codex_monitor/view/quota_view.cpp" "codex_monitor/view/codex_icon.c" ${CODEX_FONTS})
+list(APPEND SOURCES "codex_monitor/view/quota_view.cpp" "codex_monitor/view/agy_view.cpp" "codex_monitor/view/codex_icon.c" ${CODEX_FONTS})
 list(APPEND INCLUDE_DIRS "codex_monitor")
 idf_component_register(SRCS ${SOURCES}''', 1)
     cmake.write_text(text)

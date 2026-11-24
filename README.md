@@ -9,8 +9,9 @@
 - 设备连接并完成通知订阅后，默认每 **5 分钟**查询一次最新额度；断开时暂停后台查询。
 - 默认自动激活结束的 5H 周期：执行 `codex exec "Reply with OK only."`，后续通过 `codex exec resume <SESSION_ID> "Reply with OK only."` 复用同一个专用会话，再重新查询额度确认实际重置时间。
 - 开机进入设备主页，点击 **Codex** 图标手动启动。
-- Codex 页面中，面板按钮 **1 返回主页，2、3 手动同步**。
-- 点击左上 CODEX 可返回主页，点击左下 LAST UPDATED 可同步。
+- Codex / AGY 页面中，面板按钮 **1 返回主页，2 手动同步，3 在 CODEX 与 GOOGLE AGY 双环视图之间切换**。
+- 点击左上 CODEX / GOOGLE AGY 可返回主页，点击左下 LAST UPDATED 可同时同步 Codex 与 AGY 额度。
+- AGY 额度通过电脑端复用本机 `agy` 登录态（`agy --print /usage --output-format json`，纯只读零推理消耗）获取，支持 `--agy /path/to/agy` 指定路径或 `--no-agy` 关闭；内粗圆展示 Gemini 5H 剩余，外细双半圆左展示外部模型周额度（WK）、右展示外部模型 5H 额度，下半屏展示 Gemini 5H 倒计时与周额度。
 - 手动同步会打断网络失败后的退避等待，仍保留至少 5 秒查询间隔；自动重试继续使用指数退避，避免持续失败时频繁请求。
 - 每次进入 Codex 页面自动触发一次同步，相当于点击 LAST UPDATED；未连接时保留请求，蓝牙连接并完成通知订阅后立即发送。
 - 保留官方应用，主页支持分页；退出 Codex 后停止蓝牙广播和连接。
