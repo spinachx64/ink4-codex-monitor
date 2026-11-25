@@ -102,7 +102,6 @@ class AgyCycleActivator:
         session = self.data.get("session_id")
         command = [
             self.agy,
-            "--print",
             "--model", self.model,
             "--effort", "low",
             "--sandbox",
@@ -112,7 +111,7 @@ class AgyCycleActivator:
         ]
         if session:
             command += ["--conversation", session]
-        command.append(PROMPT)
+        command.append(f"--print={PROMPT}")
         # Keep the probe outside the repository and its project instructions.
         workdir = self.path.parent / "agy-activation-workspace"
         workdir.mkdir(mode=0o700, exist_ok=True)

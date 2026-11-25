@@ -76,7 +76,7 @@ class AgyActivationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await self.activator.activate_if_due(agy_windows()))
             command = spawn.call_args.args
             self.assertNotIn("--conversation", command)
-            self.assertEqual(command[-1], PROMPT)
+            self.assertEqual(command[-1], f"--print={PROMPT}")
             self.assertIn(DEFAULT_AGY_MODEL, command)
             self.assertIn("--sandbox", command)
             self.assertIn("--disable-slash-commands", command)
@@ -90,7 +90,7 @@ class AgyActivationTests(unittest.IsolatedAsyncioTestCase):
                 patch("bridge.agy_activator.asyncio.create_subprocess_exec",
                       AsyncMock(return_value=agy_process())) as spawn:
             self.assertTrue(await restarted.activate_if_due(agy_windows()))
-            self.assertEqual(spawn.call_args.args[-3:], ("--conversation", SESSION, PROMPT))
+            self.assertEqual(spawn.call_args.args[-3:], ("--conversation", SESSION, f"--print={PROMPT}"))
 
     async def test_cooldown_and_restart_do_not_repeat_request(self):
         with patch("bridge.agy_activator.time.time", return_value=NOW), \
@@ -142,7 +142,7 @@ class AgyActivationTests(unittest.IsolatedAsyncioTestCase):
                 patch("bridge.agy_activator.asyncio.create_subprocess_exec",
                       AsyncMock(return_value=agy_process([{"event": "error"}], code=1))) as spawn:
             await AgyCycleActivator("agy", self.path).activate_if_due(agy_windows())
-            self.assertEqual(spawn.call_args.args[-3:], ("--conversation", SESSION, PROMPT))
+            self.assertEqual(spawn.call_args.args[-3:], ("--conversation", SESSION, f"--print={PROMPT}"))
 
     async def test_non_ok_or_incomplete_output_is_not_success(self):
         for events in (

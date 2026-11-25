@@ -18,7 +18,7 @@
   - **CODEX 视图**：大圆环展示 5 小时剩余额度，横条展示 7 天周额度与各自重置倒计时。
   - **GOOGLE AGY 视图**：内粗圆展示 Gemini 5H 剩余，外细双半圆左展示外部模型（Claude / GPT）周额度、右展示 5H 额度，下半屏展示 Gemini 5H 倒计时与周额度。
 - **低功耗 BLE 同步**：电脑端 Python Bridge 读取本机已登录账号状态，通过蓝牙低功耗（BLE）每 **5 分钟**自动同步一次；设备空闲时自动进入 Light Sleep 并保持连接与屏幕常驻显示。
-- **5H 周期自动激活**：检测到 5H 周期到期或满额空窗时，自动复用专用只读沙箱会话发送一条轻量探活消息（Codex 使用 `codex exec`，AGY 使用 `gemini-4-hydrogen-low`）以开启新周期（可用 `--no-auto-activate` 关闭）。
+- **5H 周期自动激活**：检测到 5H 周期到期或满额空窗时，自动复用专用只读沙箱会话发送一条轻量探活消息（Codex 使用 `codex exec`，AGY 使用 `agy --model gemini-4-hydrogen-low ... --print="Reply with OK only."`）以开启新周期（可用 `--no-auto-activate` 关闭）。
 - **无 AGY 纯净兼容**：未安装 `agy` CLI 时自动以纯 Codex 模式运行，不影响旧版固件或纯 Codex 用户。
 
 ### 界面预览（480 × 800 · 3:5 原生屏比）
