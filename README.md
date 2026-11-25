@@ -21,6 +21,19 @@
 - **5H 周期自动激活**：检测到 5H 周期到期或满额空窗时，自动复用专用只读沙箱会话发送一条轻量探活消息（Codex 使用 `codex exec`，AGY 使用 `gemini-4-hydrogen-low`）以开启新周期（可用 `--no-auto-activate` 关闭）。
 - **无 AGY 纯净兼容**：未安装 `agy` CLI 时自动以纯 Codex 模式运行，不影响旧版固件或纯 Codex 用户。
 
+### 界面预览（480 × 800 · 3:5 原生屏比）
+
+<table>
+  <tr>
+    <th align="center">CODEX 视图</th>
+    <th align="center">GOOGLE AGY 视图（底部右键切换）</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/ui/layout-a.png" alt="Codex 480x800 界面预览" width="240" height="400" /></td>
+    <td align="center"><img src="docs/ui/agy-active.png" alt="Google AGY 480x800 界面预览" width="240" height="400" /></td>
+  </tr>
+</table>
+
 ### 设备操作
 
 - 开机主页点击 **Codex** 图标进入监控页（退出后自动停止 BLE 广播与连接）。
