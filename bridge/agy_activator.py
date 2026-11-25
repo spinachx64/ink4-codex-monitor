@@ -39,7 +39,7 @@ class AgyCycleActivator:
             raise ValueError("invalid AGY activation state")
         if self.data.get("session_id") is not None:
             UUID(self.data["session_id"])
-        for key in ("attempted_at", "attempted_reset", "expired_reset"):
+        for key in ("attempted_at", "attempted_reset", "active_reset", "expired_reset"):
             val = self.data.get(key)
             if val is not None and (type(val) is not int or val < 0):
                 raise ValueError("invalid AGY activation timestamp")
@@ -65,10 +65,22 @@ class AgyCycleActivator:
         if not (idle_full or full_window or expired):
             return False
         attempted = self.data.get("attempted_at")
-        if attempted is not None and now - attempted < WINDOW_SECONDS:
-            return False
+        if attempted is not None:
+            known_reset = self.data.get("active_reset") or self.data.get("attempted_reset")
+            if self.data.get("last_result") == "ok" and known_reset is not None:
+                # Once the activated cycle's known reset time passes (with a 5-min floor),
+                # allow immediate re-activation even if attempted_at was mid-cycle.
+                if now < known_reset or now - attempted < 300:
+                    return False
+            elif now - attempted < WINDOW_SECONDS:
+                return False
         # A repeated expired API snapshot is not evidence of another cycle.
         return not (expired and self.data.get("expired_reset") == window.reset)
+
+    def record_cycle_reset(self, reset):
+        if type(reset) is int and reset > 0 and self.data.get("active_reset") != reset:
+            self.data["active_reset"] = reset
+            self.save()
 
     async def activate_if_due(self, windows):
         now = int(time.time())
@@ -77,6 +89,7 @@ class AgyCycleActivator:
         window = windows["gh"]
         self.data["attempted_at"] = now
         self.data["last_result"] = "pending"
+        self.data.pop("active_reset", None)
         if window.reset is not None:
             self.data["attempted_reset"] = window.reset
             if window.reset <= now:

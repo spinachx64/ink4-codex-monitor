@@ -159,6 +159,8 @@ async def poll_agy(args, state, provider, link, activator=None):
                 try:
                     if await activator.activate_if_due(windows):
                         refreshed = await provider.fetch()
+                        if refreshed.get("gh") and refreshed["gh"].reset:
+                            activator.record_cycle_reset(refreshed["gh"].reset)
                         state.update_agy(refreshed)
                         link.publish_agy(success_session=session)
                         log.info("AGY quota refreshed after automatic Gemini 5H activation")

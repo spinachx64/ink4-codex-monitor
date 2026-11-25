@@ -204,6 +204,24 @@ class AgyActivationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.fetch.await_count, 2)
         self.assertAlmostEqual(state.agy_windows()["gh"].remaining, 99.5, places=1)
         self.assertEqual(state.agy_windows()["gh"].reset, NOW + 17990)
+        activator.record_cycle_reset.assert_called_once_with(NOW + 17990)
+
+        # Mid-cycle activation with an earlier quantized reset can re-activate as soon as that reset passes.
+        mid_cycle = AgyCycleActivator("agy", Path(self.tmp.name) / "mid.json")
+        mid_cycle.data = {
+            "session_id": SESSION,
+            "attempted_at": NOW,
+            "active_reset": NOW + 15000,  # Quantized reset 4h10m after attempted_at
+            "last_result": "ok",
+        }
+        self.assertFalse(mid_cycle.due(agy_windows(used=0, reset=None), NOW + 14999))
+        self.assertTrue(mid_cycle.due(agy_windows(used=0, reset=None), NOW + 15000))
+
+        # Failed activation without reset still enforces full 5h cooldown.
+        failed_act = AgyCycleActivator("agy", Path(self.tmp.name) / "failed.json")
+        failed_act.data = {"attempted_at": NOW, "last_result": "failed"}
+        self.assertFalse(failed_act.due(agy_windows(used=0, reset=None), NOW + 15000))
+        self.assertTrue(failed_act.due(agy_windows(used=0, reset=None), NOW + WINDOW_SECONDS))
 
         # Activation/re-fetch failure retains the successful initial fetch without marking stale.
         provider2 = Mock()
