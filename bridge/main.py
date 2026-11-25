@@ -9,6 +9,7 @@ import random
 import shutil
 import time
 from .ble_bridge import BridgeLink, ble_loop
+from .agy_activator import AgyCycleActivator, DEFAULT_AGY_MODEL
 from .agy_provider import AgyQuotaProvider, default_agy_binary
 from .quota_provider import CodexQuotaProvider, QuotaError
 from .quota_probe import probe_once, estimate
@@ -25,6 +26,8 @@ def arguments():
     p.add_argument("--agy", default=default_agy_binary())
     p.add_argument("--no-agy", dest="enable_agy", action="store_false",
                    help="disable Antigravity (agy) quota polling")
+    p.add_argument("--agy-activation-model", default=DEFAULT_AGY_MODEL,
+                   help="model used for automatic AGY Gemini 5H cycle activation")
     p.add_argument("--provider", choices=("auto", "app-server", "wham"), default="auto")
     p.add_argument("--interval", type=float, default=300)
     p.add_argument("--state", default="~/Library/Application Support/CodexInkMonitor/state.json")
@@ -33,7 +36,7 @@ def arguments():
     p.add_argument("--agy-once", action="store_true", help="read AGY quota once without BLE or inference")
     p.add_argument("--enable-probe", action="store_true", help="authorize ONE real Codex request when 5H is absent")
     p.add_argument("--no-auto-activate", dest="auto_activate", action="store_false",
-                   help="disable automatic 5H cycle activation (enabled by default; real Codex request)")
+                   help="disable automatic 5H cycle activation (enabled by default; real Codex/AGY request)")
     p.add_argument("--log-file")
     args = p.parse_args()
     if args.interval < 5:
@@ -116,7 +119,7 @@ async def poll(args, state, provider, link, activator=None):
                 pass
 
 
-async def poll_agy(args, state, provider, link):
+async def poll_agy(args, state, provider, link, activator=None):
     failures = 0
     last_fetch = None
     retry_at = 0.0
@@ -152,6 +155,15 @@ async def poll_agy(args, state, provider, link):
                      windows["gw"].source if windows.get("gw") else "missing",
                      windows["ch"].source if windows.get("ch") else "missing",
                      windows["cw"].source if windows.get("cw") else "missing")
+            if activator is not None:
+                try:
+                    if await activator.activate_if_due(windows):
+                        refreshed = await provider.fetch()
+                        state.update_agy(refreshed)
+                        link.publish_agy(success_session=session)
+                        log.info("AGY quota refreshed after automatic Gemini 5H activation")
+                except (QuotaError, OSError, ValueError, TimeoutError):
+                    log.warning("AGY automatic activation/refresh failed; retaining latest quota data")
         except (QuotaError, OSError, ValueError) as exc:
             failures += 1
             log.warning("AGY quota read: %s", exc.status if isinstance(exc, QuotaError) else "network_error")
@@ -192,12 +204,16 @@ async def run(args):
         if getattr(args, "enable_agy", True) and agy_provider is None:
             log.info("agy CLI not found; running in Codex-only mode")
         link = BridgeLink()
+        auto_activate = getattr(args, "auto_activate", True)
         activator = (CycleActivator(args.codex, state_path.with_suffix(".activation.json"))
-                     if getattr(args, "auto_activate", True) else None)
+                     if auto_activate else None)
+        agy_model = getattr(args, "agy_activation_model", DEFAULT_AGY_MODEL)
+        agy_activator = (AgyCycleActivator(agy_bin, state_path.with_suffix(".agy-activation.json"), model=agy_model)
+                         if (agy_provider is not None and auto_activate) else None)
         async with asyncio.TaskGroup() as group:
             group.create_task(poll(args, state, provider, link, activator))
             if agy_provider is not None:
-                group.create_task(poll_agy(args, state, agy_provider, link))
+                group.create_task(poll_agy(args, state, agy_provider, link, agy_activator))
             group.create_task(ble_loop(state, link, args.device))
 
 
