@@ -97,7 +97,7 @@ int main(int argc, char**) {
     agy.external[0].used=0;agy.external[1].used=0;
     agyFace.update(agy,true,now,now);save("docs/ui/agy-full.png.ppm");
 
-    // Fresh AgyView jumping directly to 100% must align 100 and % identically.
+    // Fresh AgyView jumping directly to 100% must match Weekly's 60px+21px subscript offset (35px).
     auto* agyFreshScreen=lv_obj_create(nullptr);lv_screen_load(agyFreshScreen);
     codex_ui::AgyView agyFresh;agyFresh.create(agyFreshScreen);
     agyFresh.update(agy,true,now,now);
@@ -108,6 +108,6 @@ int main(int argc, char**) {
     lv_area_t pctCoords, hunCoords;
     lv_obj_get_coords(pctLabel,&pctCoords);
     lv_obj_get_coords(hunLabel,&hunCoords);
-    assert(pctCoords.y2<=hunCoords.y2 && hunCoords.y2-pctCoords.y2<=6);
+    assert(pctCoords.y1-hunCoords.y1==35);
     printf("Snapshots and zero-idle-redraw check passed.\n");
 }

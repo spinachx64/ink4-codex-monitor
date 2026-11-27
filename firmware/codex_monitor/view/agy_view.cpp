@@ -174,7 +174,7 @@ void AgyView::create(lv_obj_t* screen) {
     five_ = text(group, "--", 0, 0, &codex_inter_60);
     lv_obj_set_style_translate_y(five_, 24, 0);
     five_pct_ = text(group, "%", 0, 0, &codex_inter_21);
-    lv_obj_set_style_translate_y(five_pct_, 54, 0);
+    lv_obj_set_style_translate_y(five_pct_, 59, 0);
     auto* rem = text(screen, "R E M A I N I N G", 120, 355, &codex_inter_12);
     lv_obj_set_width(rem, 240);
     lv_obj_set_style_text_align(rem, LV_TEXT_ALIGN_CENTER, 0);
@@ -289,7 +289,7 @@ void AgyView::update(const quota::AgyStore& store, bool connected, int64_t now,
         lv_obj_set_style_text_font(five_, valueFont, 0);
         lv_obj_set_style_translate_y(five_, useLarge ? 4 : 24, 0);
         lv_obj_set_style_text_font(five_pct_, pctFont, 0);
-        lv_obj_set_style_translate_y(five_pct_, useLarge ? 56 : 54, 0);
+        lv_obj_set_style_translate_y(five_pct_, useLarge ? 56 : 59, 0);
     }
     const int ghPct = gh.hasUsage ? static_cast<int>(gh.remaining() + 0.5f) : 0;
     snprintf(value, sizeof(value), gh.hasUsage ? "%d" : "--", ghPct);
