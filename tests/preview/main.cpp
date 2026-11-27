@@ -96,5 +96,18 @@ int main(int argc, char**) {
     agy.gemini[0].used=0;agy.gemini[0].clock=quota::CountdownClock{};
     agy.external[0].used=0;agy.external[1].used=0;
     agyFace.update(agy,true,now,now);save("docs/ui/agy-full.png.ppm");
+
+    // Fresh AgyView jumping directly to 100% must align 100 and % identically.
+    auto* agyFreshScreen=lv_obj_create(nullptr);lv_screen_load(agyFreshScreen);
+    codex_ui::AgyView agyFresh;agyFresh.create(agyFreshScreen);
+    agyFresh.update(agy,true,now,now);
+    lv_obj_update_layout(agyFreshScreen);
+    auto* pctLabel=find_text(agyFreshScreen,"%");
+    auto* hunLabel=find_text(agyFreshScreen,"100");
+    assert(pctLabel && hunLabel);
+    lv_area_t pctCoords, hunCoords;
+    lv_obj_get_coords(pctLabel,&pctCoords);
+    lv_obj_get_coords(hunLabel,&hunCoords);
+    assert(pctCoords.y2<=hunCoords.y2 && hunCoords.y2-pctCoords.y2<=6);
     printf("Snapshots and zero-idle-redraw check passed.\n");
 }

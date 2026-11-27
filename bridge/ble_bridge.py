@@ -35,8 +35,6 @@ class BridgeLink:
     def disconnect(self, session):
         if session == self.session:
             self.connected.clear()
-            self.refresh.set()  # Cancel the query tasks' interval waits.
-            self.agy_refresh.set()
 
     def publish(self, *, success_session=None):
         if success_session is not None:

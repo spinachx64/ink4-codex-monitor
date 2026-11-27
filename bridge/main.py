@@ -49,7 +49,6 @@ async def poll(args, state, provider, link, activator=None):
     last_fetch = None
     retry_at = 0.0
     while True:
-        await link.connected.wait()
         if link.manual_refresh.is_set():
             link.manual_refresh.clear()
             retry_at = 0.0
@@ -63,8 +62,6 @@ async def poll(args, state, provider, link, activator=None):
                 pass
             else:
                 continue  # Recompute the five-second throttle after bypassing backoff.
-        if not link.connected.is_set():
-            continue
         # Requests during throttle waits or the same fetch are coalesced. A new
         # connection during the fetch retains its own pending refresh request.
         link.refresh.clear()
@@ -72,14 +69,12 @@ async def poll(args, state, provider, link, activator=None):
         last_fetch = time.monotonic()
         try:
             windows = await provider.fetch()
-            if ((windows["h"] is None or windows["h"].reset is None) and args.enable_probe
-                    and link.connected.is_set() and session == link.session):
+            if (windows["h"] is None or windows["h"].reset is None) and args.enable_probe:
                 try:
                     await probe_once(args.codex, state)
                 except (OSError, TimeoutError):
                     log.warning("opt-in probe failed; no implicit retry")
-                if (state.data.get("estimate_reset") and not state.data.get("probe_requeried")
-                        and link.connected.is_set() and session == link.session):
+                if state.data.get("estimate_reset") and not state.data.get("probe_requeried"):
                     state.data["probe_requeried"] = True
                     state.save()
                     windows = await provider.fetch()
@@ -112,11 +107,10 @@ async def poll(args, state, provider, link, activator=None):
         retry_at = time.monotonic() + delay if failures else 0.0
         if session == link.session:
             link.refresh.clear()
-        if link.connected.is_set():
-            try:
-                await asyncio.wait_for(link.refresh.wait(), timeout=delay)
-            except TimeoutError:
-                pass
+        try:
+            await asyncio.wait_for(link.refresh.wait(), timeout=delay)
+        except TimeoutError:
+            pass
 
 
 async def poll_agy(args, state, provider, link, activator=None):
@@ -124,7 +118,6 @@ async def poll_agy(args, state, provider, link, activator=None):
     last_fetch = None
     retry_at = 0.0
     while True:
-        await link.connected.wait()
         if link.agy_manual_refresh.is_set():
             link.agy_manual_refresh.clear()
             retry_at = 0.0
@@ -138,8 +131,6 @@ async def poll_agy(args, state, provider, link, activator=None):
                 pass
             else:
                 continue
-        if not link.connected.is_set():
-            continue
         link.agy_refresh.clear()
         session = link.session
         last_fetch = time.monotonic()
@@ -175,11 +166,10 @@ async def poll_agy(args, state, provider, link, activator=None):
         retry_at = time.monotonic() + delay if failures else 0.0
         if session == link.session:
             link.agy_refresh.clear()
-        if link.connected.is_set():
-            try:
-                await asyncio.wait_for(link.agy_refresh.wait(), timeout=delay)
-            except TimeoutError:
-                pass
+        try:
+            await asyncio.wait_for(link.agy_refresh.wait(), timeout=delay)
+        except TimeoutError:
+            pass
 
 
 async def run(args):

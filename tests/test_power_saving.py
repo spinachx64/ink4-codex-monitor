@@ -104,34 +104,40 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
     def start_poll(self):
         return self.start(poll(self.args, self.state, self.provider, self.link))
 
-    async def test_offline_waits_without_queries_then_polls_every_five_minutes(self):
+    async def test_offline_polls_every_five_minutes_and_syncs_on_connect(self):
         self.start_poll()
-        await self.advance(3600)
-        self.provider.fetch.assert_not_awaited()
-        self.assertFalse(self.state.path.exists())
-        self.link.connect()
         await self.settle()
         self.assertEqual(self.provider.fetch.await_count, 1)
+        self.assertTrue(self.state.path.exists())
         await self.advance(299)
         self.assertEqual(self.provider.fetch.await_count, 1)
         await self.advance(1)
         self.assertEqual(self.provider.fetch.await_count, 2)
+        await self.advance(10)
+        self.link.connect()
+        await self.settle()
+        self.assertEqual(self.provider.fetch.await_count, 3)
         self.link.disconnect(self.link.session)
-        await self.advance(3600)
-        self.assertEqual(self.provider.fetch.await_count, 2)
+        await self.advance(299)
+        self.assertEqual(self.provider.fetch.await_count, 3)
+        await self.advance(1)
+        self.assertEqual(self.provider.fetch.await_count, 4)
 
-    async def test_disconnect_during_throttle_does_not_start_query(self):
+    async def test_disconnect_does_not_trigger_extra_query_while_respecting_throttle(self):
         session = self.link.connect()
         self.start_poll()
         await self.advance(1)
         self.link.refresh.set()
         await self.settle()
         self.link.disconnect(session)
-        await self.advance(4)
+        await self.advance(3)
         self.assertEqual(self.provider.fetch.await_count, 1)
-        self.link.connect()
-        await self.settle()
+        await self.advance(1)
         self.assertEqual(self.provider.fetch.await_count, 2)
+        await self.advance(299)
+        self.assertEqual(self.provider.fetch.await_count, 2)
+        await self.advance(1)
+        self.assertEqual(self.provider.fetch.await_count, 3)
 
     async def test_failure_backoff_survives_manual_requests_and_reconnection(self):
         self.state.update(windows())
@@ -240,7 +246,7 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.state.windows()['h'].source, 'api')
         self.assertEqual(self.link.revision, 1)
 
-    async def test_query_can_finish_offline_without_starting_another(self):
+    async def test_query_can_finish_offline_and_continue_scheduled_polling(self):
         release = asyncio.Event()
 
         async def fetch():
@@ -253,9 +259,22 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.link.disconnect(session)
         release.set()
-        await self.advance(3600)
+        await self.advance(299)
         self.assertEqual(self.provider.fetch.await_count, 1)
         self.assertEqual(self.state.windows()['h'].used, 40)
+        await self.advance(1)
+        self.assertEqual(self.provider.fetch.await_count, 2)
+
+    async def test_activation_runs_while_offline(self):
+        refreshed = {'h': Window(0, 1800018000), 'w': None}
+        self.provider.fetch.side_effect = [windows(), refreshed]
+        activator = SimpleNamespace(activate_if_due=AsyncMock(return_value=True))
+        self.start(poll(self.args, self.state, self.provider, self.link, activator))
+        await self.settle()
+        self.assertFalse(self.link.connected.is_set())
+        self.assertEqual(self.provider.fetch.await_count, 2)
+        self.assertEqual(self.state.windows()['h'].reset, refreshed['h'].reset)
+        activator.activate_if_due.assert_awaited_once_with(windows())
 
     async def test_reconnect_during_fetch_requires_a_query_in_the_new_session(self):
         release = asyncio.Event()
@@ -446,14 +465,15 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
             return client
 
         self.start_poll()
+        await self.advance(5)
+        self.assertEqual(self.provider.fetch.await_count, 1)
         self.start(ble_session(object(), self.state, self.link, factory))
         await self.settle()
         self.assertTrue(self.link.connected.is_set())
-        self.provider.fetch.assert_awaited_once()
-        self.assertEqual(len(clients[0].packets), 1)
-        self.assertEqual(clients[0].packets[0]['h']['s'], 'api')
+        self.assertEqual(self.provider.fetch.await_count, 2)
+        self.assertEqual(clients[0].packets[-1]['h']['s'], 'api')
         await self.advance(10)
-        self.provider.fetch.assert_awaited_once()
+        self.assertEqual(self.provider.fetch.await_count, 2)
 
     async def test_delayed_page_open_notification_coalesces_with_initial_query(self):
         clients = []
@@ -464,15 +484,17 @@ class PowerSavingTests(unittest.IsolatedAsyncioTestCase):
             return client
 
         self.start_poll()
+        await self.advance(5)
+        self.assertEqual(self.provider.fetch.await_count, 1)
         self.start(ble_session(object(), self.state, self.link, factory))
         await self.advance(2)
         clients[0].notify(None, b'R')
         await self.advance(8)
-        self.provider.fetch.assert_awaited_once()
+        self.assertEqual(self.provider.fetch.await_count, 2)
         # A later manual request still works before the 5-minute periodic poll.
         clients[0].notify(None, b'R')
         await self.settle()
-        self.assertEqual(self.provider.fetch.await_count, 2)
+        self.assertEqual(self.provider.fetch.await_count, 3)
 
     async def test_cancel_and_late_callbacks_do_not_clear_a_new_connection(self):
         clients = []

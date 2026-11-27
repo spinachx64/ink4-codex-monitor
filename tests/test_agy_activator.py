@@ -239,3 +239,23 @@ class AgyActivationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await task2
         self.assertEqual(state.agy_windows()["gh"].source, "api")
+
+        # Polling and activation continue running even when BLE is disconnected.
+        provider3 = Mock()
+        provider3.last_source = "agy-cli"
+        provider3.fetch = AsyncMock(side_effect=[idle, agy_windows(used=0, reset=NOW + 18000)])
+        activator3 = Mock()
+        activator3.activate_if_due = AsyncMock(return_value=True)
+        link3 = BridgeLink()
+        state3 = State(Path(self.tmp.name) / "offline-state.json")
+        task3 = asyncio.create_task(poll_agy(args, state3, provider3, link3, activator3))
+        while provider3.fetch.await_count < 2:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.02)
+        task3.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task3
+        self.assertFalse(link3.connected.is_set())
+        self.assertEqual(state3.agy_windows()["gh"].used, 0)
+        self.assertEqual(state3.agy_windows()["gh"].reset, NOW + 18000)
+        activator3.record_cycle_reset.assert_called_once_with(NOW + 18000)

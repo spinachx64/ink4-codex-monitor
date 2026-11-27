@@ -172,8 +172,9 @@ void AgyView::create(lv_obj_t* screen) {
     lv_obj_set_flex_align(group, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_column(group, 4, 0);
     five_ = text(group, "--", 0, 0, &codex_inter_60);
-    five_pct_ = text(group, "%", 0, 0, &codex_inter_34);
-    lv_obj_set_style_translate_y(five_pct_, 52, 0);
+    lv_obj_set_style_translate_y(five_, 24, 0);
+    five_pct_ = text(group, "%", 0, 0, &codex_inter_21);
+    lv_obj_set_style_translate_y(five_pct_, 54, 0);
     auto* rem = text(screen, "R E M A I N I N G", 120, 355, &codex_inter_12);
     lv_obj_set_width(rem, 240);
     lv_obj_set_style_text_align(rem, LV_TEXT_ALIGN_CENTER, 0);
@@ -283,11 +284,12 @@ void AgyView::update(const quota::AgyStore& store, bool connected, int64_t now,
     const bool useLarge = gh.hasUsage && gh.remaining() < 99.5f;
     const auto* valueFont = useLarge ? &codex_inter_90 : &codex_inter_60;
     const auto* pctFont = useLarge ? &codex_inter_34 : &codex_inter_21;
-    if (lv_obj_get_style_text_font(five_, LV_PART_MAIN) != valueFont) {
+    if (lv_obj_get_style_text_font(five_, LV_PART_MAIN) != valueFont ||
+        lv_obj_get_style_text_font(five_pct_, LV_PART_MAIN) != pctFont) {
         lv_obj_set_style_text_font(five_, valueFont, 0);
         lv_obj_set_style_translate_y(five_, useLarge ? 4 : 24, 0);
         lv_obj_set_style_text_font(five_pct_, pctFont, 0);
-        lv_obj_set_style_translate_y(five_pct_, useLarge ? 56 : 59, 0);
+        lv_obj_set_style_translate_y(five_pct_, useLarge ? 56 : 54, 0);
     }
     const int ghPct = gh.hasUsage ? static_cast<int>(gh.remaining() + 0.5f) : 0;
     snprintf(value, sizeof(value), gh.hasUsage ? "%d" : "--", ghPct);
